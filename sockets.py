@@ -27,10 +27,20 @@ app = Flask(__name__)
 sockets = Sockets(app)
 app.debug = True
 
+# Reference: https://github.com/abramhindle/WebSocketsExamples/blob/master/chat.py
+clients = list()      
+
+def send_all(msg):
+    for client in clients:
+        client.put(msg)
+
+def send_all_json(obj):
+    send_all(json.dumps(obj))
+
 class Client:
     def __init__(self):
         self.queue = queue.Queue()
-    
+
     def put(self, v):
         self.queue.put_nowait(v)
 
@@ -71,7 +81,6 @@ class World:
         return self.space
 
 myWorld = World()
-clients = list()      
 
 def set_listener( entity, data ):
     ''' do something with the update ! '''
@@ -93,15 +102,13 @@ def read_ws(ws,client):
         while True:
             msg = ws.receive()
             print("WS RECV %s" % msg)
-            if msg is not None:
-                data = json.load(msg)
-                for entity in data:
-                    myWorld.set(entity, data[entity])
+            if (msg is not None):
+                packet = json.loads(msg)
+                send_all_json( packet )
             else:
                 break
-    except Exception as e:
-        print("WS error %s" %e)
-    return None
+    except:
+        '''Done'''
 
 @sockets.route('/subscribe')
 def subscribe_socket(ws):
@@ -110,17 +117,17 @@ def subscribe_socket(ws):
     # XXX: TODO IMPLEMENT ME
     client = Client()
     clients.append(client)
-    g = gevent.spawn(read_ws, ws, client)
+    g = gevent.spawn( read_ws, ws, client )    
     try:
         while True:
+            # block here
             msg = client.get()
             ws.send(msg)
-    except Exception as e:
-        print("WS error %s" %e)
+    except Exception as e:# WebSocketError as e:
+        print("WS Error %s" % e)
     finally:
         clients.remove(client)
         gevent.kill(g)
-    return None
 
 
 # I give this to you, this is how you get the raw body/data portion of a post in flask
